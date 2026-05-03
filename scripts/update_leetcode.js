@@ -25,12 +25,27 @@ async function fetchStats() {
         headers: {
             'Content-Type': 'application/json',
             'Referer': `https://leetcode.cn/u/${USERNAME}/`,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Origin': 'https://leetcode.cn'
         },
         body: JSON.stringify(query)
     });
 
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`LeetCode API 响应异常 (HTTP ${response.status}): ${text.slice(0, 300)}`);
+    }
+
     const resData = await response.json();
+    
+    if (resData.errors) {
+        throw new Error(`GraphQL 错误: ${JSON.stringify(resData.errors)}`);
+    }
+    
+    if (!resData.data || !resData.data.matchedUser) {
+        throw new Error(`无法找到用户数据: ${JSON.stringify(resData)}`);
+    }
+
     return resData.data;
 }
 
