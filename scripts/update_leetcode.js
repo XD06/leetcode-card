@@ -4,12 +4,20 @@ const path = require('path');
 const USERNAME = 'carlsun-2'; // 你的力扣 ID
 
 async function fetchStats() {
-    const query = {
+    const commonHeaders = {
+        'Content-Type': 'application/json',
+        'Referer': `https://leetcode.cn/u/${USERNAME}/`,
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Origin': 'https://leetcode.cn'
+    };
+
+    // 1. 获取核心统计数据 (AC 数)
+    const statsQuery = {
+        operationName: "userProblemsSolved",
         query: `
-        query getFullStats($username: String!) {
+        query userProblemsSolved($username: String!) {
           allQuestionsCount { difficulty count }
           matchedUser(username: $username) {
-            userCalendar { submissionCalendar }
             submitStatsGlobal {
               acSubmissionNum { difficulty count }
               totalSubmissionNum { difficulty count }
@@ -20,33 +28,44 @@ async function fetchStats() {
         variables: { username: USERNAME }
     };
 
-    const response = await fetch('https://leetcode.cn/graphql/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Referer': `https://leetcode.cn/u/${USERNAME}/`,
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-            'Origin': 'https://leetcode.cn'
-        },
-        body: JSON.stringify(query)
-    });
+    // 2. 获取日历数据 (绿点图)
+    const calendarQuery = {
+        operationName: "userProfileCalendar",
+        query: `
+        query userProfileCalendar($username: String!) {
+          matchedUser(username: $username) {
+            userCalendar {
+              submissionCalendar
+            }
+          }
+        }
+      `,
+        variables: { username: USERNAME }
+    };
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`LeetCode API 响应异常 (HTTP ${response.status}): ${text.slice(0, 300)}`);
+    const [statsRes, calRes] = await Promise.all([
+        fetch('https://leetcode.cn/graphql/', { method: 'POST', headers: commonHeaders, body: JSON.stringify(statsQuery) }),
+        fetch('https://leetcode.cn/graphql/', { method: 'POST', headers: commonHeaders, body: JSON.stringify(calendarQuery) })
+    ]);
+
+    if (!statsRes.ok || !calRes.ok) {
+        throw new Error(`API 请求失败: Stats(${statsRes.status}) Cal(${calRes.status})`);
     }
 
-    const resData = await response.json();
-    
-    if (resData.errors) {
-        throw new Error(`GraphQL 错误: ${JSON.stringify(resData.errors)}`);
-    }
-    
-    if (!resData.data || !resData.data.matchedUser) {
-        throw new Error(`无法找到用户数据: ${JSON.stringify(resData)}`);
+    const statsData = await statsRes.json();
+    const calData = await calRes.json();
+
+    if (statsData.errors || calData.errors) {
+        throw new Error(`GraphQL 错误: ${JSON.stringify(statsData.errors || calData.errors)}`);
     }
 
-    return resData.data;
+    return {
+        allQuestionsCount: statsData.data.allQuestionsCount,
+        matchedUser: {
+            ...statsData.data.matchedUser,
+            userCalendar: calData.data.matchedUser.userCalendar
+        }
+    };
 }
 
 function generateSvg(data) {
